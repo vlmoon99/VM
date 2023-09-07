@@ -29,6 +29,7 @@ import { nanoid, customAlphabet } from "nanoid";
 import _ from "lodash";
 import { Parser } from "acorn";
 import jsx from "acorn-jsx";
+import * as tf from '@tensorflow/tfjs';
 
 // Radix:
 import * as Accordion from "@radix-ui/react-accordion";
@@ -231,6 +232,7 @@ const Keywords = {
   console: true,
   styled: true,
   Object: true,
+  tf,
   Date,
   Number,
   Big,
@@ -730,6 +732,7 @@ class VmStack {
 
   callFunction(keyword, callee, args, optional, isNew) {
     const keywordType = Keywords[keyword];
+
     if (keywordType === true || keywordType === undefined) {
       if (
         (keyword === "Social" && callee === "getr") ||
@@ -979,7 +982,8 @@ class VmStack {
         } else {
           throw new Error("Unsupported WebSocket method");
         }
-      } else if (keywordType === undefined) {
+      }
+      else if (keywordType === undefined) {
         if (NativeFunctions.hasOwnProperty(callee)) {
           return NativeFunctions[callee](...args);
         } else if (callee === "fetch") {
@@ -1043,10 +1047,27 @@ class VmStack {
           return clearInterval(timer);
         }
       }
+
     } else {
       const f = callee === keyword ? keywordType : keywordType[callee];
+
       if (typeof f === "function") {
         return isNew ? new f(...args) : f(...args);
+      } else if (keyword === "tf" && callee === "tensor2d") {
+        return tf.tensor2d(args[0]);
+      } else if (keyword === "tf" && callee === "loadModel") {
+        return tf.loadLayersModel(args[1]).then(async (loadedModel) => {
+          await loadedModel.save(`localstorage://default`);
+          console.log(`Model Loaded ${JSON.stringify(loadedModel.toJSON())}`);
+          return loadedModel;
+        });
+      } else if (keyword === "tf" && callee === "predict") {
+        return tf.loadLayersModel('localstorage://default').then((model) => {
+          const predictions = model.predict(args[1]).dataSync();
+          console.log(`predictions ${JSON.stringify(predictions)}`);
+          return predictions;
+        });
+
       }
     }
 
@@ -1101,8 +1122,8 @@ class VmStack {
           if (!options?.callee) {
             throw new Error(
               "Cannot dereference keyword '" +
-                keyword +
-                "' in non-call expression"
+              keyword +
+              "' in non-call expression"
             );
           }
           return {
@@ -1659,10 +1680,10 @@ class VmStack {
             deepCopy(
               e instanceof Error
                 ? {
-                    name: e?.name,
-                    message: e?.message,
-                    toString: () => e.toString(),
-                  }
+                  name: e?.name,
+                  message: e?.message,
+                  toString: () => e.toString(),
+                }
                 : e
             )
           );
@@ -1758,8 +1779,8 @@ export default class VM {
     this.setReactState = setReactState
       ? (s) => setReactState(isObject(s) ? Object.assign({}, s) : s)
       : () => {
-          throw new Error("State is unavailable for modules");
-        };
+        throw new Error("State is unavailable for modules");
+      };
     this.cache = cache;
     this.refreshCache = refreshCache;
     this.confirmTransactions = confirmTransactions;
@@ -1770,7 +1791,6 @@ export default class VM {
     this.cachedStyledComponents = new Map();
     this.widgetConfigs = widgetConfigs;
     this.ethersProviderContext = ethersProviderContext;
-
     this.ethersProvider = ethersProviderContext?.provider
       ? new ethers.providers.Web3Provider(ethersProviderContext.provider)
       : null;
@@ -1782,6 +1802,7 @@ export default class VM {
     this.networkId =
       widgetConfigs.findLast((config) => config && config.networkId)
         ?.networkId || near.config.networkId;
+
   }
 
   stop() {
